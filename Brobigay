@@ -1,0 +1,273 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Config = {
+    Aimbot = false,
+    ShowFOV = false,
+    ESP = false,
+    FOVRadius = 150,
+    AimPart = "Head",
+    TeamCheck = true,
+    EnemyColor = Color3.fromRGB(255, 0, 0),
+    TeamColor = Color3.fromRGB(0, 255, 0),
+}
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1.5
+FOVCircle.Color = Color3.fromRGB(0, 200, 255)
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.7
+FOVCircle.NumSides = 64
+
+local ESPBoxes = {}
+
+local function IsEnemy(player)
+    if player == LocalPlayer then return false end
+    if not Config.TeamCheck then return true end
+    if player.Team and LocalPlayer.Team then
+        return player.Team ~= LocalPlayer.Team
+    end
+    return true
+end
+
+local function GetClosestPlayer(center)
+    local bestTarget = nil
+    local bestDist = Config.FOVRadius
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if IsEnemy(player) and player.Character then
+            local targetPart = player.Character:FindFirstChild(Config.AimPart)
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if targetPart and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestTarget = player
+                    end
+                end
+            end
+        end
+    end
+    return bestTarget
+end
+
+local function CreateESPBox(player)
+    if ESPBoxes[player] then return end
+    local box = Drawing.new("Square")
+    box.Thickness = 2
+    box.Filled = false
+    box.Transparency = 1
+    ESPBoxes[player] = box
+end
+
+local function RemoveESPBox(player)
+    local box = ESPBoxes[player]
+    if box then
+        box:Remove()
+        ESPBoxes[player] = nil
+    end
+end
+
+local function UpdateESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player == LocalPlayer then
+            RemoveESPBox(player)
+            continue
+        end
+
+        local char = player.Character
+        if not char or not Config.ESP then
+            RemoveESPBox(player)
+            continue
+        end
+
+        local head = char:FindFirstChild("Head")
+        local humanoid = char:FindFirstChild("Humanoid")
+        if not head or not humanoid or humanoid.Health <= 0 then
+            RemoveESPBox(player)
+            continue
+        end
+
+        CreateESPBox(player)
+        local box = ESPBoxes[player]
+
+        local headPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        local rootPos
+        if rootPart then
+            rootPos, _ = Camera:WorldToViewportPoint(rootPart.Position)
+        end
+
+        if onScreen and rootPos then
+            local dist = (head.Position - Camera.CFrame.Position).Magnitude
+            local size = math.clamp(200 / dist * 10, 30, 150)
+
+            local topY = headPos.Y - size * 0.5
+            local bottomY = rootPos.Y + size * 0.3
+            local height = bottomY - topY
+            local width = size * 0.6
+            local centerX = (headPos.X + rootPos.X) / 2
+
+            box.Position = Vector2.new(centerX - width / 2, topY)
+            box.Size = Vector2.new(width, height)
+
+            local isEnemy = IsEnemy(player)
+            box.Color = isEnemy and Config.EnemyColor or Config.TeamColor
+            box.Visible = true
+        else
+            box.Visible = false
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    local viewportSize = Camera.ViewportSize
+    local center = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+
+    FOVCircle.Position = center
+    FOVCircle.Radius = Config.FOVRadius
+    FOVCircle.Visible = Config.ShowFOV
+
+    if Config.Aimbot and Config.ShowFOV then
+        local target = GetClosestPlayer(center)
+        if target and target.Character then
+            local aimPart = target.Character:FindFirstChild(Config.AimPart)
+            if aimPart then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPart.Position)
+            end
+        end
+    end
+
+    UpdateESP()
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    RemoveESPBox(player)
+end)
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AimbotESP_GUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local Toolbar = Instance.new("Frame")
+Toolbar.Size = UDim2.new(0, 50, 0, 200)
+Toolbar.Position = UDim2.new(1, -60, 0.5, -100)
+Toolbar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+Toolbar.BackgroundTransparency = 0.2
+Toolbar.BorderSizePixel = 0
+Toolbar.Parent = ScreenGui
+Toolbar.Active = true
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = Toolbar
+
+local dragging = false
+local dragStartPos = nil
+local dragStartMouse = nil
+
+Toolbar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStartPos = Toolbar.Position
+        dragStartMouse = input.Position
+    end
+end)
+
+Toolbar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStartMouse
+        local newPos = UDim2.new(dragStartPos.X.Scale, dragStartPos.X.Offset + delta.X,
+                                  dragStartPos.Y.Scale, dragStartPos.Y.Offset + delta.Y)
+        Toolbar.Position = newPos
+    end
+end)
+
+local HideBtn = Instance.new("TextButton")
+HideBtn.Size = UDim2.new(1, 0, 0, 25)
+HideBtn.Position = UDim2.new(0, 0, 0, 0)
+HideBtn.Text = "✕"
+HideBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+HideBtn.TextSize = 14
+HideBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+HideBtn.BorderSizePixel = 0
+HideBtn.Parent = Toolbar
+
+local ShowButton = nil
+
+local function ShowToolbar()
+    if ShowButton then
+        ShowButton:Destroy()
+        ShowButton = nil
+    end
+    Toolbar.Visible = true
+end
+
+local function HideToolbar()
+    Toolbar.Visible = false
+    if not ShowButton then
+        ShowButton = Instance.new("TextButton")
+        ShowButton.Size = UDim2.new(0, 40, 0, 40)
+        ShowButton.Position = UDim2.new(1, -50, 0.5, -20)
+        ShowButton.Text = "⚡"
+        ShowButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ShowButton.TextSize = 24
+        ShowButton.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+        ShowButton.BackgroundTransparency = 0.3
+        ShowButton.BorderSizePixel = 0
+        ShowButton.Parent = ScreenGui
+        ShowButton.MouseButton1Click:Connect(ShowToolbar)
+    end
+end
+
+HideBtn.MouseButton1Click:Connect(HideToolbar)
+
+local function CreateRayToggle(parent, yPos, icon, getValue, setValue)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 35)
+    btn.Position = UDim2.new(0, 5, 0, yPos)
+    btn.Text = icon
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 20
+    btn.BackgroundColor3 = getValue() and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(60, 60, 70)
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        local newVal = not getValue()
+        setValue(newVal)
+        btn.BackgroundColor3 = newVal and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(60, 60, 70)
+    end)
+
+    return btn
+end
+
+CreateRayToggle(Toolbar, 30, "🎯", function() return Config.Aimbot end, function(v) Config.Aimbot = v end)
+CreateRayToggle(Toolbar, 70, "◯", function() return Config.ShowFOV end, function(v) Config.ShowFOV = v end)
+CreateRayToggle(Toolbar, 110, "▣", function() return Config.ESP end, function(v) Config.ESP = v end)
+
+local Note = Instance.new("TextLabel")
+Note.Size = UDim2.new(1, 0, 0, 20)
+Note.Position = UDim2.new(0, 0, 1, -20)
+Note.Text = "FOV bắt buộc"
+Note.TextColor3 = Color3.fromRGB(180, 180, 180)
+Note.TextSize = 9
+Note.BackgroundTransparency = 1
+Note.Font = Enum.Font.Gotham
+Note.Parent = Toolbar
