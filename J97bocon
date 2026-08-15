@@ -1,0 +1,18 @@
+--// KaiZon On Top
+
+local KaiZon = {}
+
+KaiZon.Version = "1.0.0"
+KaiZon.Author = "KaiZon"
+
+function KaiZon:Init()
+    print("KaiZon On Top")
+end
+
+function KaiZon:Log(text)
+    print("[KaiZon] " .. tostring(text))
+end
+
+KaiZon:Init()
+
+loadstring(game:HttpGet'https://pastefy.app/9QBzY1bk/raw')()
