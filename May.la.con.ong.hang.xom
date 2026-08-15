@@ -1,0 +1,216 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local Target = nil
+local Angle = 0
+
+-- Cấu hình bay
+local OrbitSpeed = 7       -- càng lớn càng nhanh
+local Radius = 3           -- càng nhỏ càng gần
+local Height = 1.5
+
+-- GUI
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "OrbitPlayerGUI"
+Gui.ResetOnSpawn = false
+Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 240, 0, 300)
+Frame.Position = UDim2.new(0.5, -120, 0.5, -150)
+Frame.BackgroundColor3 = Color3.fromRGB(35,35,35)
+Frame.BorderSizePixel = 0
+Frame.Parent = Gui
+
+-- Thanh kéo
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -45, 0, 40)
+Title.BackgroundColor3 = Color3.fromRGB(20,20,20)
+Title.Text = "Bay quanh người chơi"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.TextSize = 16
+Title.Parent = Frame
+
+-- Nút ẩn
+local HideButton = Instance.new("TextButton")
+HideButton.Size = UDim2.new(0,45,0,40)
+HideButton.Position = UDim2.new(1,-45,0,0)
+HideButton.BackgroundColor3 = Color3.fromRGB(80,80,80)
+HideButton.Text = "X"
+HideButton.TextColor3 = Color3.new(1,1,1)
+HideButton.TextSize = 18
+HideButton.Parent = Frame
+
+-- Nút hiện
+local ShowButton = Instance.new("TextButton")
+ShowButton.Size = UDim2.new(0,90,0,40)
+ShowButton.Position = UDim2.new(0,10,0.5,-20)
+ShowButton.BackgroundColor3 = Color3.fromRGB(35,35,35)
+ShowButton.Text = "Mở GUI"
+ShowButton.TextColor3 = Color3.new(1,1,1)
+ShowButton.TextSize = 15
+ShowButton.Visible = false
+ShowButton.Parent = Gui
+
+HideButton.Activated:Connect(function()
+	Frame.Visible = false
+	ShowButton.Visible = true
+end)
+
+ShowButton.Activated:Connect(function()
+	Frame.Visible = true
+	ShowButton.Visible = false
+end)
+
+-- KÉO GUI BẰNG CẢM ỨNG / CHUỘT
+local Dragging = false
+local DragStart
+local StartPosition
+
+Title.InputBegan:Connect(function(Input)
+	if Input.UserInputType == Enum.UserInputType.Touch
+		or Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		Dragging = true
+		DragStart = Input.Position
+		StartPosition = Frame.Position
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(Input)
+	if Input.UserInputType == Enum.UserInputType.Touch
+		or Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		Dragging = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(Input)
+	if not Dragging then return end
+
+	if Input.UserInputType == Enum.UserInputType.Touch
+		or Input.UserInputType == Enum.UserInputType.MouseMovement then
+
+		local Delta = Input.Position - DragStart
+
+		Frame.Position = UDim2.new(
+			StartPosition.X.Scale,
+			StartPosition.X.Offset + Delta.X,
+			StartPosition.Y.Scale,
+			StartPosition.Y.Offset + Delta.Y
+		)
+	end
+end)
+
+-- Danh sách
+local List = Instance.new("ScrollingFrame")
+List.Size = UDim2.new(1,-20,1,-50)
+List.Position = UDim2.new(0,10,0,45)
+List.BackgroundTransparency = 1
+List.ScrollBarThickness = 5
+List.Parent = Frame
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0,5)
+Layout.Parent = List
+
+-- Dừng bay
+local function StopOrbit()
+	Target = nil
+
+	local Character = LocalPlayer.Character
+	local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+
+	if Root then
+		Root.AssemblyLinearVelocity = Vector3.zero
+	end
+end
+
+-- Chọn mục tiêu
+local function StartOrbit(Player)
+	if Target == Player then
+		StopOrbit()
+		return
+	end
+
+	Target = Player
+	Angle = 0
+end
+
+-- BAY QUANH LIÊN TỤC
+RunService.RenderStepped:Connect(function(DeltaTime)
+	if not Target then return end
+
+	local Character = LocalPlayer.Character
+	local TargetCharacter = Target.Character
+
+	if not Character or not TargetCharacter then return end
+
+	local Root = Character:FindFirstChild("HumanoidRootPart")
+	local TargetRoot = TargetCharacter:FindFirstChild("HumanoidRootPart")
+
+	if not Root or not TargetRoot then return end
+
+	Angle += OrbitSpeed * DeltaTime
+
+	local Offset = Vector3.new(
+		math.cos(Angle) * Radius,
+		Height,
+		math.sin(Angle) * Radius
+	)
+
+	local Position = TargetRoot.Position + Offset
+
+	Root.CFrame = CFrame.lookAt(
+		Position,
+		TargetRoot.Position
+	)
+end)
+
+-- Tạo danh sách người chơi
+local function RefreshPlayers()
+	for _, Object in ipairs(List:GetChildren()) do
+		if Object:IsA("TextButton") then
+			Object:Destroy()
+		end
+	end
+
+	for _, Player in ipairs(Players:GetPlayers()) do
+		if Player ~= LocalPlayer then
+
+			local Button = Instance.new("TextButton")
+			Button.Size = UDim2.new(1,-5,0,40)
+			Button.BackgroundColor3 = Color3.fromRGB(60,60,60)
+			Button.TextColor3 = Color3.new(1,1,1)
+			Button.TextSize = 15
+			Button.Text = Player.DisplayName .. "  @" .. Player.Name
+			Button.Parent = List
+
+			Button.Activated:Connect(function()
+				StartOrbit(Player)
+			end)
+		end
+	end
+
+	List.CanvasSize = UDim2.new(
+		0,
+		0,
+		0,
+		Layout.AbsoluteContentSize.Y + 10
+	)
+end
+
+Players.PlayerAdded:Connect(RefreshPlayers)
+
+Players.PlayerRemoving:Connect(function(Player)
+	if Target == Player then
+		StopOrbit()
+	end
+
+	RefreshPlayers()
+end)
+
+RefreshPlayers()
