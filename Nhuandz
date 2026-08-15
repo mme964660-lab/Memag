@@ -1,7 +1,0 @@
-local player = game.Players.LocalPlayer
-local char = player.Character or player.CharacterAdded:Wait()
-
-if char:FindFirstChild("Humanoid") then
-    char.Humanoid.WalkSpeed = 100
-    char.Humanoid.JumpPower = 120
-end
