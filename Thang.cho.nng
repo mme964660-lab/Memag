@@ -1,0 +1,104 @@
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local sound = nil
+local isPlaying = false
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "BoomboxGUI"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 100)
+mainFrame.Position = UDim2.new(0.5, -150, 0.5, -50)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+mainFrame.BackgroundTransparency = 0.2
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 25)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.Text = "🎵 Boombox Local"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 16
+title.Font = Enum.Font.GothamBold
+title.BackgroundTransparency = 1
+title.Parent = mainFrame
+
+local idBox = Instance.new("TextBox")
+idBox.Size = UDim2.new(0.6, 0, 0, 30)
+idBox.Position = UDim2.new(0.05, 0, 0.4, 0)
+idBox.PlaceholderText = "Nhập Sound ID"
+idBox.Text = ""
+idBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+idBox.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+idBox.BorderSizePixel = 0
+idBox.Font = Enum.Font.Gotham
+idBox.TextSize = 14
+idBox.Parent = mainFrame
+local idCorner = Instance.new("UICorner")
+idCorner.CornerRadius = UDim.new(0, 4)
+idCorner.Parent = idBox
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.25, 0, 0, 30)
+toggleBtn.Position = UDim2.new(0.7, 0, 0.4, 0)
+toggleBtn.Text = "▶ Phát"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.TextSize = 14
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 80)
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Parent = mainFrame
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 4)
+btnCorner.Parent = toggleBtn
+
+local function PlayMusic(soundId)
+    if sound then
+        sound:Stop()
+        sound:Destroy()
+        sound = nil
+    end
+    sound = Instance.new("Sound")
+    sound.SoundId = "rbxassetid://" .. tostring(soundId)
+    sound.Volume = 1
+    sound.Looped = false
+    sound.Parent = character:FindFirstChild("Head") or character
+    sound:Play()
+    isPlaying = true
+    toggleBtn.Text = "⏸ Dừng"
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+end
+
+local function StopMusic()
+    if sound then
+        sound:Stop()
+        sound:Destroy()
+        sound = nil
+    end
+    isPlaying = false
+    toggleBtn.Text = "▶ Phát"
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 80)
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+    local id = idBox.Text
+    if id == "" then return end
+    if isPlaying then
+        StopMusic()
+    else
+        PlayMusic(id)
+    end
+end)
+
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    if sound then
+        StopMusic()
+    end
+end)
