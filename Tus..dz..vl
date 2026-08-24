@@ -1,0 +1,426 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character
+local humanoid = character and character:FindFirstChild("Humanoid")
+local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TimeStopGUI"
+screenGui.Parent = CoreGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 220, 0, 120)
+mainFrame.Position = UDim2.new(0.5, -110, 0.5, -60)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+mainFrame.BackgroundTransparency = 0.15
+mainFrame.BorderSizePixel = 1
+mainFrame.BorderColor3 = Color3.fromRGB(180, 180, 255)
+mainFrame.Active = true
+mainFrame.Draggable = false
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+local originalSize = mainFrame.Size
+local originalPosition = mainFrame.Position
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 25)
+titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -30, 1, 0)
+titleLabel.Position = UDim2.new(0, 5, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "⏱ Time Stop"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 16
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Parent = titleBar
+
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Name = "MinimizeButton"
+minimizeButton.Size = UDim2.new(0, 25, 1, 0)
+minimizeButton.Position = UDim2.new(1, -25, 0, 0)
+minimizeButton.BackgroundTransparency = 1
+minimizeButton.Text = "−"
+minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minimizeButton.TextSize = 18
+minimizeButton.Font = Enum.Font.SourceSans
+minimizeButton.Parent = titleBar
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 100, 0, 35)
+toggleButton.Position = UDim2.new(0.5, -50, 0.65, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+toggleButton.Text = "BẬT"
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextSize = 16
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Parent = mainFrame
+
+local isTimeStopped = false
+local isMinimized = false
+local savedData = {}
+local colorCorrection = nil
+local freezeConnections = {}
+
+local function ensureCharacter()
+    character = localPlayer.Character
+    if not character then return false end
+    humanoid = character:FindFirstChild("Humanoid")
+    rootPart = character:FindFirstChild("HumanoidRootPart")
+    return humanoid and rootPart
+end
+
+local function createColorEffect()
+    if not colorCorrection then
+        colorCorrection = Instance.new("ColorCorrectionEffect")
+        colorCorrection.Name = "TimeStopColorEffect"
+        colorCorrection.Parent = Lighting
+        colorCorrection.Enabled = false
+    end
+end
+
+local function applyColorEffect(enabled)
+    createColorEffect()
+    if enabled then
+        colorCorrection.Enabled = true
+        colorCorrection.Saturation = -0.8
+        colorCorrection.Contrast = 0.3
+        colorCorrection.Brightness = 0.1
+        local blur = Lighting:FindFirstChild("TimeStopBlur")
+        if not blur then
+            blur = Instance.new("BlurEffect")
+            blur.Name = "TimeStopBlur"
+            blur.Parent = Lighting
+        end
+        blur.Enabled = true
+        blur.Size = 3
+    else
+        colorCorrection.Enabled = false
+        local blur = Lighting:FindFirstChild("TimeStopBlur")
+        if blur then
+            blur.Enabled = false
+            blur.Size = 0
+        end
+    end
+end
+
+local function saveOtherPlayers()
+    savedData = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            local char = player.Character
+            if char then
+                local playerData = {
+                    Character = char,
+                    Parts = {}
+                }
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        table.insert(playerData.Parts, {
+                            Part = part,
+                            Anchored = part.Anchored,
+                            CFrame = part.CFrame,
+                            CanCollide = part.CanCollide,
+                            Transparency = part.Transparency
+                        })
+                    end
+                end
+                local animator = char:FindFirstChild("Animator")
+                if animator then
+                    playerData.Animator = animator
+                    playerData.AnimationTracks = {}
+                    for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                        table.insert(playerData.AnimationTracks, {
+                            Track = track,
+                            IsPlaying = track.IsPlaying,
+                            Speed = track.Speed,
+                            TimePosition = track.TimePosition
+                        })
+                    end
+                end
+                local particles = {}
+                for _, obj in pairs(char:GetDescendants()) do
+                    if obj:IsA("ParticleEmitter") then
+                        table.insert(particles, {
+                            Emitter = obj,
+                            Enabled = obj.Enabled,
+                            Rate = obj.Rate,
+                            Speed = obj.Speed
+                        })
+                    end
+                end
+                playerData.Particles = particles
+                savedData[player] = playerData
+            end
+        end
+    end
+end
+
+local function freezeOthers(freeze)
+    for player, data in pairs(savedData) do
+        if not data.Character or not data.Character.Parent then
+            savedData[player] = nil
+        else
+            for _, partInfo in pairs(data.Parts) do
+                local part = partInfo.Part
+                if part and part.Parent then
+                    if freeze then
+                        part.Anchored = true
+                        part.CanCollide = false
+                    else
+                        part.Anchored = partInfo.Anchored
+                        part.CanCollide = partInfo.CanCollide
+                    end
+                end
+            end
+            if data.Animator then
+                for _, trackInfo in pairs(data.AnimationTracks) do
+                    local track = trackInfo.Track
+                    if track and track.IsPlaying then
+                        if freeze then
+                            track:AdjustSpeed(0)
+                        else
+                            track:AdjustSpeed(trackInfo.Speed or 1)
+                        end
+                    end
+                end
+            end
+            for _, pInfo in pairs(data.Particles) do
+                local emitter = pInfo.Emitter
+                if emitter and emitter.Parent then
+                    if freeze then
+                        emitter.Enabled = false
+                        emitter.Rate = 0
+                        emitter.Speed = 0
+                    else
+                        emitter.Enabled = pInfo.Enabled
+                        emitter.Rate = pInfo.Rate
+                        emitter.Speed = pInfo.Speed
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function refreshPlayerList()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and not savedData[player] then
+            local char = player.Character
+            if char then
+                local playerData = {
+                    Character = char,
+                    Parts = {}
+                }
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        table.insert(playerData.Parts, {
+                            Part = part,
+                            Anchored = part.Anchored,
+                            CFrame = part.CFrame,
+                            CanCollide = part.CanCollide,
+                            Transparency = part.Transparency
+                        })
+                    end
+                end
+                local animator = char:FindFirstChild("Animator")
+                if animator then
+                    playerData.Animator = animator
+                    playerData.AnimationTracks = {}
+                    for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                        table.insert(playerData.AnimationTracks, {
+                            Track = track,
+                            IsPlaying = track.IsPlaying,
+                            Speed = track.Speed,
+                            TimePosition = track.TimePosition
+                        })
+                    end
+                end
+                local particles = {}
+                for _, obj in pairs(char:GetDescendants()) do
+                    if obj:IsA("ParticleEmitter") then
+                        table.insert(particles, {
+                            Emitter = obj,
+                            Enabled = obj.Enabled,
+                            Rate = obj.Rate,
+                            Speed = obj.Speed
+                        })
+                    end
+                end
+                playerData.Particles = particles
+                savedData[player] = playerData
+                if isTimeStopped then
+                    freezeOthers(true)
+                end
+            end
+        end
+    end
+end
+
+local function toggleTimeStop()
+    if not ensureCharacter() then
+        warn("Không tìm thấy nhân vật!")
+        return
+    end
+
+    isTimeStopped = not isTimeStopped
+
+    if isTimeStopped then
+        saveOtherPlayers()
+        freezeOthers(true)
+        applyColorEffect(true)
+        toggleButton.Text = "TẮT"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+        local conn = RunService.RenderStepped:Connect(function()
+            if not isTimeStopped then
+                conn:Disconnect()
+                return
+            end
+            for player, data in pairs(savedData) do
+                if data.Character and data.Character.Parent then
+                    for _, partInfo in pairs(data.Parts) do
+                        local part = partInfo.Part
+                        if part and part.Parent then
+                            part.CFrame = partInfo.CFrame
+                        end
+                    end
+                end
+            end
+        end)
+        table.insert(freezeConnections, conn)
+        local playerAddedConn = Players.PlayerAdded:Connect(function(player)
+            if player ~= localPlayer then
+                task.wait(0.5)
+                refreshPlayerList()
+            end
+        end)
+        table.insert(freezeConnections, playerAddedConn)
+        local refreshConn = RunService.Heartbeat:Connect(function()
+            if not isTimeStopped then
+                refreshConn:Disconnect()
+                return
+            end
+            refreshPlayerList()
+        end)
+        table.insert(freezeConnections, refreshConn)
+    else
+        for _, conn in pairs(freezeConnections) do
+            conn:Disconnect()
+        end
+        freezeConnections = {}
+        freezeOthers(false)
+        applyColorEffect(false)
+        toggleButton.Text = "BẬT"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleTimeStop)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        toggleTimeStop()
+    end
+end)
+
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        mainFrame.Size = UDim2.new(0, 220, 0, 25)
+        mainFrame.ClipsDescendants = true
+        toggleButton.Visible = false
+        titleLabel.Text = "⏱"
+        minimizeButton.Text = "+"
+    else
+        mainFrame.Size = originalSize
+        mainFrame.Position = originalPosition
+        mainFrame.ClipsDescendants = true
+        toggleButton.Visible = true
+        titleLabel.Text = "⏱ Time Stop"
+        minimizeButton.Text = "−"
+    end
+end
+
+minimizeButton.MouseButton1Click:Connect(toggleMinimize)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.K then
+        toggleMinimize()
+    end
+end)
+
+local dragging = false
+local dragInput, dragStart, startPos = nil, nil, nil
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    mainFrame.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+    originalPosition = mainFrame.Position
+end
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
+       input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or
+       input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateDrag(input)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input == dragInput then
+        dragging = false
+        dragInput = nil
+    end
+end)
+
+localPlayer.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoid = character:FindFirstChild("Humanoid")
+    rootPart = character:FindFirstChild("HumanoidRootPart")
+    if isTimeStopped then
+        toggleTimeStop()
+    end
+end)
+
+createColorEffect()
+applyColorEffect(false)
+minimizeButton.Text = "−"
